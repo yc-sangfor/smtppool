@@ -12,7 +12,20 @@ import (
 	"net/textproto"
 	"sync"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
+
+type Proxy struct {
+	// ProxyUserName is the proxy server's username used for authentication.
+	ProxyUserName string `json:"proxy_userName"`
+
+	// ProxyPassword is the proxy server's password used for authentication.
+	ProxyPassword string `json:"proxy_password"`
+
+	// ProxyAddress is the proxy server's address.
+	ProxyAddress string `json:"proxy_address"`
+}
 
 // Opt represents SMTP pool options.
 type Opt struct {
@@ -54,6 +67,9 @@ type Opt struct {
 
 	// TLSConfig is the optional TLS configuration.
 	TLSConfig *tls.Config
+
+	// Proxy is the optional proxy server configuration.
+	Proxy *Proxy
 }
 
 // Pool represents an SMTP connection pool.
@@ -162,21 +178,48 @@ func (p *Pool) newConn() (cn *conn, err error) {
 	var (
 		netCon net.Conn
 		addr   = fmt.Sprintf("%s:%d", p.opt.Host, p.opt.Port)
+		ssl    = p.opt.SSL
 	)
-	if p.opt.TLSConfig != nil && p.opt.SSL {
-		// TLS connection.
-		c, err := tls.DialWithDialer(&net.Dialer{Timeout: p.opt.PoolWaitTimeout}, "tcp", addr, p.opt.TLSConfig)
+
+	if p.opt.Proxy != nil {
+		var auth *proxy.Auth
+		if p.opt.Proxy.ProxyUserName != "" {
+			auth = &proxy.Auth{
+				User:     p.opt.Proxy.ProxyUserName,
+				Password: p.opt.Proxy.ProxyPassword,
+			}
+		}
+		dialer, err := proxy.SOCKS5("tcp", p.opt.Proxy.ProxyAddress, auth, proxy.Direct)
+		if err != nil {
+			return nil, err
+		}
+
+		c, err := dialer.Dial("tcp", p.opt.Proxy.ProxyAddress)
 		if err != nil {
 			return nil, err
 		}
 		netCon = c
+
+		// golang.org/x/net/proxy not support tls connect, so later using STARTTLS.
+		if p.opt.TLSConfig != nil && ssl {
+			ssl = false
+		}
 	} else {
-		// Non-TLS connection that may be upgraded later using STARTTLS.
-		c, err := net.DialTimeout("tcp", addr, p.opt.PoolWaitTimeout)
-		if err != nil {
-			return nil, err
+		if p.opt.TLSConfig != nil && ssl {
+			// TLS connection.
+			c, err := tls.DialWithDialer(&net.Dialer{Timeout: p.opt.PoolWaitTimeout}, "tcp", addr, p.opt.TLSConfig)
+			if err != nil {
+				return nil, err
+			}
+			netCon = c
+		} else {
+			// Non-TLS connection that may be upgraded later using STARTTLS.
+			c, err := net.DialTimeout("tcp", addr, p.opt.PoolWaitTimeout)
+			if err != nil {
+				return nil, err
+			}
+			netCon = c
 		}
-		netCon = c
 	}
 
 	// Connect to the SMTP server
@@ -199,7 +242,7 @@ func (p *Pool) newConn() (cn *conn, err error) {
 	}
 
 	// STARTTLS.
-	if p.opt.TLSConfig != nil && !p.opt.SSL {
+	if p.opt.TLSConfig != nil && !ssl {
 		if ok, _ := sm.Extension("STARTTLS"); !ok {
 			return nil, errors.New("SMTP STARTTLS extension not found")
 		}
