@@ -17,14 +17,14 @@ import (
 )
 
 type Proxy struct {
-	// ProxyUserName is the proxy server's username used for authentication.
-	ProxyUserName string `json:"proxy_userName"`
+	// UserName is the proxy server's username used for authentication.
+	Username string `json:"username"`
 
-	// ProxyPassword is the proxy server's password used for authentication.
-	ProxyPassword string `json:"proxy_password"`
+	// Password is the proxy server's password used for authentication.
+	Password string `json:"password"`
 
-	// ProxyAddress is the proxy server's address.
-	ProxyAddress string `json:"proxy_address"`
+	// Address is the proxy server's address.
+	Address string `json:"address"`
 }
 
 // Opt represents SMTP pool options.
@@ -183,24 +183,24 @@ func (p *Pool) newConn() (cn *conn, err error) {
 
 	if p.opt.Proxy != nil {
 		var auth *proxy.Auth
-		if p.opt.Proxy.ProxyUserName != "" {
+		if p.opt.Proxy.Username != "" {
 			auth = &proxy.Auth{
-				User:     p.opt.Proxy.ProxyUserName,
-				Password: p.opt.Proxy.ProxyPassword,
+				User:     p.opt.Proxy.Username,
+				Password: p.opt.Proxy.Password,
 			}
 		}
-		dialer, err := proxy.SOCKS5("tcp", p.opt.Proxy.ProxyAddress, auth, proxy.Direct)
+		dialer, err := proxy.SOCKS5("tcp", p.opt.Proxy.Address, auth, proxy.Direct)
 		if err != nil {
 			return nil, err
 		}
 
-		c, err := dialer.Dial("tcp", p.opt.Proxy.ProxyAddress)
+		c, err := dialer.Dial("tcp", addr)
 		if err != nil {
 			return nil, err
 		}
 		netCon = c
 
-		// golang.org/x/net/proxy not support tls connect, so later using STARTTLS.
+		// golang.org/x/net/proxy not support tls/ssl connect, so later using STARTTLS.
 		if p.opt.TLSConfig != nil && ssl {
 			ssl = false
 		}
