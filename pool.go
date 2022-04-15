@@ -458,7 +458,7 @@ func (c *conn) send(e Email) (bool, error) {
 // Start starts the SMTP LOGIN auth type.
 // https://gist.github.com/andelf/5118732
 func (a *LoginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
-	return "LOGIN", []byte{}, nil
+	return "LOGIN", []byte(a.Username), nil
 }
 
 // Next passes the credentials for SMTP LOGIN auth type.
@@ -467,9 +467,9 @@ func (a *LoginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 		return nil, nil
 	}
 	switch string(fromServer) {
-	case "Username:":
+	case "Username:", "username:":
 		return []byte(a.Username), nil
-	case "Password:":
+	case "Password:", "password:":
 		return []byte(a.Password), nil
 	default:
 		return nil, errors.New("unkown SMTP fromServer")
